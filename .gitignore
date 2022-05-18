@@ -1,10 +1,12 @@
 .libtorch
 .opencv
 .htslib
+.mnist
 build/
 libtorch/
 opencv*/
 htslib/
+mnist/
 *~
 
 # Prerequisites

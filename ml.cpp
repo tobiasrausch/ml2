@@ -35,7 +35,8 @@ int main(int argc, char **argv) {
       std::cout << " using Boost: v" << BOOST_VERSION / 100000 << "." << BOOST_VERSION / 100 % 1000 << "." << BOOST_VERSION % 100 << std::endl;
       std::cout << " using HTSlib: v" << hts_version() << std::endl;
       std::cout << " using OpenCV: v" << CV_VERSION << std::endl;
-	
+      std::cout << " using PyTorch: v" << TORCH_VERSION << std::endl;
+      
       return 0;
     }
     else if ((std::string(argv[1]) == "help") || (std::string(argv[1]) == "--help") || (std::string(argv[1]) == "-h") || (std::string(argv[1]) == "-?")) {
