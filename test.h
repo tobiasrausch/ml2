@@ -118,7 +118,7 @@ namespace ml {
     std::cout << tensor << std::endl;
     std::cout << std::endl;
 
-    std::string image_path = cv::samples::findFile("starry_night.jpg");
+    std::string image_path = "test.png";
     cv::Mat img = cv::imread(image_path, cv::IMREAD_COLOR);
     if(img.empty())
       {

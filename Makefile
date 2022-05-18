@@ -3,7 +3,12 @@ SHELL := /bin/bash
 # Targets
 TARGETS = .libtorch .opencv .mnist ml
 PBASE=$(shell pwd)
-
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+	PYTORCHLIB="https://download.pytorch.org/libtorch/cpu/libtorch-macos-1.11.0.zip"
+else
+	PYTORCHLIB="https://download.pytorch.org/libtorch/nightly/cpu/libtorch-cxx11-abi-shared-with-deps-latest.zip"
+endif
 SOURCES = $(wildcard *.h) $(wildcard *.cpp)
 
 all: ${TARGETS}
@@ -12,10 +17,10 @@ all: ${TARGETS}
 	mkdir mnist && cd mnist && wget 'http://yann.lecun.com/exdb/mnist/train-images-idx3-ubyte.gz' && wget 'http://yann.lecun.com/exdb/mnist/train-labels-idx1-ubyte.gz' && wget 'http://yann.lecun.com/exdb/mnist/t10k-images-idx3-ubyte.gz' && wget 'http://yann.lecun.com/exdb/mnist/t10k-labels-idx1-ubyte.gz' && gunzip *.gz && cd .. && touch .mnist
 
 .libtorch:
-	wget 'https://download.pytorch.org/libtorch/nightly/cpu/libtorch-cxx11-abi-shared-with-deps-latest.zip' && unzip libtorch-cxx11-abi-shared-with-deps-latest.zip && rm libtorch-cxx11-abi-shared-with-deps-latest.zip && touch .libtorch
+	wget -O libtorch.zip ${PYTORCHLIB} && unzip libtorch.zip && rm libtorch.zip && touch .libtorch
 
 .opencv:
-	wget -O opencv.zip 'https://github.com/opencv/opencv/archive/4.5.5.zip' && unzip opencv.zip && rm opencv.zip && mkdir -p opencv && cd opencv && cmake ../opencv-* && cmake --build . -- -j 8 && cd .. && touch .opencv
+	wget -O opencv.zip 'https://github.com/opencv/opencv/archive/4.5.5.zip' && unzip opencv.zip && rm opencv.zip && mkdir -p opencvbuild && cd opencvbuild && cmake ../opencv-* && cmake -D CMAKE_BUILD_TYPE=RELEASE -D CMAKE_INSTALL_PREFIX=${PBASE}/opencv -D BUILD_SHARED_LIBS=ON -DOPENCV_GENERATE_PKGCONFIG=ON -D BUILD_ZLIB=ON -D BUILD_PNG=ON -D WITH_OPENEXR=OFF -D WITH_JPEG=OFF -D WITH_JASPER=OFF -D WITH_TIFF=OFF -D WITH_WEBP=OFF -D WITH_OPENCL=OFF -D WITH_GTK=ON -D WITH_FFMPEG=OFF -D WITH_1394=OFF -D WITH_IPP=OFF -D BUILD_TESTS=OFF -D BUILD_PERF_TESTS=OFF -D BUILD_opencv_apps=OFF ../opencv-* &&  make -j 4 && make install && cd ../ && rm -rf opencvbuild/ && touch .opencv;
 
 .htslib:
 	wget -O htslib.tar.bz2 'https://github.com/samtools/htslib/releases/download/1.15.1/htslib-1.15.1.tar.bz2' && bunzip2 htslib.tar.bz2 && tar -xf htslib.tar && rm htslib.tar && mv htslib-* htslib && cd htslib && autoheader && autoconf && ./configure --disable-s3 --disable-gcs --disable-libcurl --disable-plugins && make && make lib-static && cd ../ && touch .htslib
