@@ -1,6 +1,8 @@
 .libtorch
+.opencv
 build/
 libtorch/
+opencv*/
 *~
 
 # Prerequisites

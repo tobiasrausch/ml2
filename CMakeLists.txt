@@ -1,9 +1,12 @@
 cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
-project(example-app)
+project( example-app )
+set(CMAKE_CXX_STANDARD 14)
+find_package( Torch REQUIRED )
+find_package( OpenCV REQUIRED )
+include_directories( ${OpenCV_INCLUDE_DIRS} )
+include_directories( ${TORCH_INCLUDE_DIRS} )
 
-find_package(Torch REQUIRED)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
+add_executable("${CMAKE_PROJECT_NAME}" example-app.cpp)
+target_link_libraries("${CMAKE_PROJECT_NAME}" ${TORCH_LIBRARIES} ${OpenCV_LIBS})
+set_property(TARGET "${CMAKE_PROJECT_NAME}" PROPERTY CXX_STANDARD 14)
 
-add_executable(example-app example-app.cpp)
-target_link_libraries(example-app "${TORCH_LIBRARIES}")
-set_property(TARGET example-app PROPERTY CXX_STANDARD 14)
