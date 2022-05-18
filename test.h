@@ -108,11 +108,10 @@ namespace ml {
     _readImages(train_images.string(), images);
 
     // Show image
-    uint32_t index = 4769;
-    std::cout << "Test image " << labels[index] << std::endl;
-    cv::imwrite(c.outfile.string().c_str(), images[index]);
-
-
+    uint32_t index = 300;
+    cv::imshow(std::to_string(labels[index]), images[index]);
+    cv::waitKey(0);
+    cv::destroyAllWindows();
     
     torch::Tensor tensor = torch::rand({2, 3});
     std::cout << tensor << std::endl;
