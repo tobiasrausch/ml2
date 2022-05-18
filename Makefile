@@ -14,11 +14,14 @@ all: ${TARGETS}
 .opencv:
 	wget -O opencv.zip 'https://github.com/opencv/opencv/archive/4.5.5.zip' && unzip opencv.zip && rm opencv.zip && mkdir -p opencv && cd opencv && cmake ../opencv-* && cmake --build . -- -j 8 && cd .. && touch .opencv
 
-example: .libtorch .opencv ${SOURCES}
+.htslib:
+	wget -O htslib.tar.bz2 'https://github.com/samtools/htslib/releases/download/1.15.1/htslib-1.15.1.tar.bz2' && bunzip2 htslib.tar.bz2 && tar -xf htslib.tar && rm htslib.tar && mv htslib-* htslib && cd htslib && autoheader && autoconf && ./configure --disable-s3 --disable-gcs --disable-libcurl --disable-plugins && make && make lib-static && cd ../ && touch .htslib
+
+example: .libtorch .opencv .htslib ${SOURCES}
 	mkdir -p build && cd build && cmake -DCMAKE_PREFIX_PATH="${PBASE}/libtorch;${PBASE}/opencv" .. && make
 
 clean:
 	rm -rf build/
 
 distclean:
-	rm -rf $(TARGETS) $(TARGETS:=.o) build/ opencv* libtorch/
+	rm -rf $(TARGETS) $(TARGETS:=.o) build/ opencv* libtorch/ htslib/

@@ -1,8 +1,10 @@
 .libtorch
 .opencv
+.htslib
 build/
 libtorch/
 opencv*/
+htslib/
 *~
 
 # Prerequisites
