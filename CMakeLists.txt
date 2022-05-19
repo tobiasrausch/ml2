@@ -1,4 +1,7 @@
 cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
+
+#set(CMAKE_VERBOSE_MAKEFILE ON)
+
 project( ml )
 set( htslib_LIB hts )
 find_package( Torch REQUIRED )

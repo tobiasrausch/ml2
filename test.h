@@ -37,6 +37,91 @@ namespace ml {
     boost::filesystem::path path;
   };
 
+
+  static std::vector<int64_t> k_size = {2, 2};
+  static std::vector<int64_t> p_size = {0, 0};
+  static c10::optional<int64_t> divisor_override;
+  
+  class LeNet5Impl : public torch::nn::Module {
+  public:
+    LeNet5Impl() {
+      conv_ = torch::nn::Sequential(
+      torch::nn::Conv2d(torch::nn::Conv2dOptions(1, 6, 5)),
+      torch::nn::Functional(torch::tanh),
+      torch::nn::Functional(torch::avg_pool2d,
+                            /*kernel_size*/ torch::IntArrayRef(k_size),
+                            /*stride*/ torch::IntArrayRef(k_size),
+                            /*padding*/ torch::IntArrayRef(p_size),
+                            /*ceil_mode*/ false,
+                            /*count_include_pad*/ false,
+                            divisor_override),
+      torch::nn::Conv2d(torch::nn::Conv2dOptions(6, 16, 5)),
+      torch::nn::Functional(torch::tanh),
+      torch::nn::Functional(torch::avg_pool2d,
+                            /*kernel_size*/ torch::IntArrayRef(k_size),
+                            /*stride*/ torch::IntArrayRef(k_size),
+                            /*padding*/ torch::IntArrayRef(p_size),
+                            /*ceil_mode*/ false,
+                            /*count_include_pad*/ false,
+                            divisor_override),
+      torch::nn::Conv2d(torch::nn::Conv2dOptions(16, 120, 5)),
+      torch::nn::Functional(torch::tanh));
+      register_module("conv", conv_);
+
+      full_ = torch::nn::Sequential(
+      torch::nn::Linear(torch::nn::LinearOptions(120, 84)),
+      torch::nn::Functional(torch::tanh),
+      torch::nn::Linear(torch::nn::LinearOptions(84, 10)));
+      register_module("full", full_);
+    }
+  
+    torch::Tensor forward(at::Tensor x) {
+      auto output = conv_->forward(x);
+      output = output.view({x.size(0), -1});
+      output = full_->forward(output);
+      output = torch::log_softmax(output, -1);
+      return output;
+    }
+    
+  private:
+    torch::nn::Sequential conv_;
+    torch::nn::Sequential full_;
+  };
+  TORCH_MODULE(LeNet5);
+  
+  
+  torch::Tensor CvImageToTensor(const cv::Mat& image, torch::DeviceType device) {
+    assert(image.channels() == 1);
+    std::vector<int64_t> dims{static_cast<int64_t>(1), static_cast<int64_t>(image.rows), static_cast<int64_t>(image.cols)};
+
+    torch::Tensor tensor_image = torch::from_blob(image.data, torch::IntArrayRef(dims), torch::TensorOptions().dtype(torch::kFloat).requires_grad(false)).clone();
+    return tensor_image.to(device);
+  }
+
+  class CustomDataset : public torch::data::Dataset<CustomDataset>
+  {
+  private:
+    std::vector<torch::Tensor> images, labels;
+
+    public:
+        explicit CustomDataset(std::vector<cv::Mat> const& img, std::vector<unsigned char> const& lb, torch::DeviceType const& device) {
+	  images.resize(lb.size());
+	  labels.resize(lb.size());
+	  for(uint32_t i = 0; i < lb.size(); ++i) {
+	    images[i] = CvImageToTensor(img[i], device);
+	    labels[i] = torch::tensor(static_cast<int64_t>(lb[i]), torch::TensorOptions().dtype(torch::kLong).device(device));
+	  }
+	};
+
+    torch::data::Example<> get(size_t index) {
+      return {images[index], labels[index]};
+    }
+
+    torch::optional<size_t> size() const {
+      return labels.size();
+    }
+  };
+  
   template <class T>
   bool read_header(T* out, std::istream& stream) {
     auto size = static_cast<std::streamsize>(sizeof(T));
@@ -106,30 +191,76 @@ namespace ml {
     std::vector<cv::Mat> images;
     _readLabels(train_labels.string(), labels);
     _readImages(train_images.string(), images);
+    auto train_data_set = CustomDataset(images, labels, device);
+    auto train_loader = torch::data::make_data_loader(train_data_set.map(torch::data::transforms::Stack<>()), torch::data::DataLoaderOptions().batch_size(256).workers(8));
 
-    // Show image
-    uint32_t index = 300;
-    cv::imshow(std::to_string(labels[index]), images[index]);
+    // Show example image
+    cv::imshow(std::to_string(labels[300]), images[300]);
     cv::waitKey(0);
     cv::destroyAllWindows();
     
-    torch::Tensor tensor = torch::rand({2, 3});
-    std::cout << tensor << std::endl;
-    std::cout << std::endl;
+    // Load test images
+    std::vector<unsigned char> tlabels;
+    std::vector<cv::Mat> timages;
+    _readLabels(test_labels.string(), tlabels);
+    _readImages(test_images.string(), timages);
+    auto test_data_set = CustomDataset(timages, tlabels, device);
+    auto test_loader = torch::data::make_data_loader(test_data_set.map(torch::data::transforms::Stack<>()), torch::data::DataLoaderOptions().batch_size(1024).workers(8));
 
-    std::string image_path = "test.png";
-    cv::Mat img = cv::imread(image_path, cv::IMREAD_COLOR);
-    if(img.empty())
-      {
-	std::cout << "Could not read the image: " << image_path << std::endl;
-	return 1;
+    // Show example image
+    cv::imshow(std::to_string(tlabels[300]), timages[300]);
+    cv::waitKey(0);
+    cv::destroyAllWindows();
+
+    // model
+    LeNet5Impl model;
+    model.to(device);
+
+    // optimizer
+    double learning_rate = 0.01;
+    double weight_decay = 0.0001;
+    torch::optim::SGD optimizer(model.parameters(), torch::optim::SGDOptions(learning_rate).weight_decay(weight_decay).momentum(0.5));
+
+    // Training
+    int epochs = 100;
+    for (int epoch = 0; epoch < epochs; ++epoch) {
+      model.train();
+
+      // Batches
+      int idx = 0;
+      for (auto& batch : (*train_loader)) {
+	optimizer.zero_grad();
+	torch::Tensor prediction = model.forward(batch.data);
+
+	// test data
+	// std::cout << prediction << std::endl;
+	// std::cout << batch.target << std::endl;
+
+	torch::Tensor loss = torch::nll_loss(prediction, batch.target.squeeze(1));
+	loss.backward();
+	optimizer.step();
+
+	if (idx % 10 == 0) {
+	  std::cout << "Epoch: " << epoch << ", Batch: " << idx << ", Loss: " << loss.item<float>() << std::endl;
+	}
+	++idx;
       }
-    cv::imshow("Display window", img);
-    int k = cv::waitKey(0); // Wait for a keystroke in the window
-    if(k == 's')
-      {
-	cv::imwrite("starry_night.png", img);
+
+      // Test data set for evaluation
+      model.eval();
+      unsigned long total_correct = 0;
+      float avg_loss = 0.0;
+      for (auto& batch : (*test_loader)) {
+	torch::Tensor prediction = model.forward(batch.data);
+	torch::Tensor loss = torch::nll_loss(prediction, batch.target.squeeze(1));
+	avg_loss += loss.sum().item<float>();
+	auto pred = std::get<1>(prediction.detach_().max(1));
+	total_correct += static_cast<unsigned long>(pred.eq(batch.target.view_as(pred)).sum().item<long>());
       }
+      avg_loss /= test_data_set.size().value();
+      double accuracy = (static_cast<double>(total_correct) / test_data_set.size().value());
+      std::cout << "Test Avg. Loss: " << avg_loss << ", Accuracy: " << accuracy << std::endl;
+    }
     
 
 #ifdef PROFILE
