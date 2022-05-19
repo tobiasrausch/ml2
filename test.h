@@ -37,59 +37,86 @@ namespace ml {
     boost::filesystem::path path;
   };
 
-
-  static std::vector<int64_t> k_size = {2, 2};
-  static std::vector<int64_t> p_size = {0, 0};
-  static c10::optional<int64_t> divisor_override;
-  
-  class LeNet5Impl : public torch::nn::Module {
-  public:
-    LeNet5Impl() {
-      conv_ = torch::nn::Sequential(
-      torch::nn::Conv2d(torch::nn::Conv2dOptions(1, 6, 5)),
-      torch::nn::Functional(torch::tanh),
-      torch::nn::Functional(torch::avg_pool2d,
-                            /*kernel_size*/ torch::IntArrayRef(k_size),
-                            /*stride*/ torch::IntArrayRef(k_size),
-                            /*padding*/ torch::IntArrayRef(p_size),
-                            /*ceil_mode*/ false,
-                            /*count_include_pad*/ false,
-                            divisor_override),
-      torch::nn::Conv2d(torch::nn::Conv2dOptions(6, 16, 5)),
-      torch::nn::Functional(torch::tanh),
-      torch::nn::Functional(torch::avg_pool2d,
-                            /*kernel_size*/ torch::IntArrayRef(k_size),
-                            /*stride*/ torch::IntArrayRef(k_size),
-                            /*padding*/ torch::IntArrayRef(p_size),
-                            /*ceil_mode*/ false,
-                            /*count_include_pad*/ false,
-                            divisor_override),
-      torch::nn::Conv2d(torch::nn::Conv2dOptions(16, 120, 5)),
-      torch::nn::Functional(torch::tanh));
-      register_module("conv", conv_);
-
-      full_ = torch::nn::Sequential(
-      torch::nn::Linear(torch::nn::LinearOptions(120, 84)),
-      torch::nn::Functional(torch::tanh),
-      torch::nn::Linear(torch::nn::LinearOptions(84, 10)));
-      register_module("full", full_);
-    }
-  
-    torch::Tensor forward(at::Tensor x) {
-      auto output = conv_->forward(x);
-      output = output.view({x.size(0), -1});
-      output = full_->forward(output);
-      output = torch::log_softmax(output, -1);
-      return output;
+  struct Net: torch::nn::Module {
+    // VGG-16 Layer
+    // conv1_1 - conv1_2 - pool 1 - conv2_1 - conv2_2 - pool 2 - conv3_1 - conv3_2 - conv3_3 - pool 3 -
+    // conv4_1 - conv4_2 - conv4_3 - pool 4 - conv5_1 - conv5_2 - conv5_3 - pool 5 - fc6 - fc7 - fc8
+    Net() {
+      // Initialize CNN
+      // On how to pass strides and padding: https://github.com/pytorch/pytorch/issues/12649#issuecomment-430156160
+      conv1_1 = register_module("conv1_1", torch::nn::Conv2d(torch::nn::Conv2dOptions(1, 10, 3).padding(1)));
+      conv1_2 = register_module("conv1_2", torch::nn::Conv2d(torch::nn::Conv2dOptions(10, 20, 3).padding(1)));
+      // Insert pool layer
+      conv2_1 = register_module("conv2_1", torch::nn::Conv2d(torch::nn::Conv2dOptions(20, 30, 3).padding(1)));
+      conv2_2 = register_module("conv2_2", torch::nn::Conv2d(torch::nn::Conv2dOptions(30, 40, 3).padding(1)));
+      // Insert pool layer
+      conv3_1 = register_module("conv3_1", torch::nn::Conv2d(torch::nn::Conv2dOptions(40, 50, 3).padding(1)));
+      conv3_2 = register_module("conv3_2", torch::nn::Conv2d(torch::nn::Conv2dOptions(50, 60, 3).padding(1)));
+      conv3_3 = register_module("conv3_3", torch::nn::Conv2d(torch::nn::Conv2dOptions(60, 70, 3).padding(1)));
+      // Insert pool layer
+      conv4_1 = register_module("conv4_1", torch::nn::Conv2d(torch::nn::Conv2dOptions(70, 80, 3).padding(1)));
+      conv4_2 = register_module("conv4_2", torch::nn::Conv2d(torch::nn::Conv2dOptions(80, 90, 3).padding(1)));
+      conv4_3 = register_module("conv4_3", torch::nn::Conv2d(torch::nn::Conv2dOptions(90, 100, 3).padding(1)));
+      // Insert pool layer
+      conv5_1 = register_module("conv5_1", torch::nn::Conv2d(torch::nn::Conv2dOptions(100, 110, 3).padding(1)));
+      conv5_2 = register_module("conv5_2", torch::nn::Conv2d(torch::nn::Conv2dOptions(110, 120, 3).padding(1)));
+      conv5_3 = register_module("conv5_3", torch::nn::Conv2d(torch::nn::Conv2dOptions(120, 130, 3).padding(1)));
+      // Insert pool layer
+      fc1 = register_module("fc1", torch::nn::Linear(130, 50));
+      fc2 = register_module("fc2", torch::nn::Linear(50, 20));
+      fc3 = register_module("fc3", torch::nn::Linear(20, 10));
     }
     
-  private:
-    torch::nn::Sequential conv_;
-    torch::nn::Sequential full_;
+    // Implement Algorithm
+    torch::Tensor forward(torch::Tensor x) {
+      x = torch::relu(conv1_1->forward(x));
+      x = torch::relu(conv1_2->forward(x));
+      x = torch::max_pool2d(x, 2);
+      
+      x = torch::relu(conv2_1->forward(x));
+      x = torch::relu(conv2_2->forward(x));
+      x = torch::max_pool2d(x, 2);
+      
+      x = torch::relu(conv3_1->forward(x));
+      x = torch::relu(conv3_2->forward(x));
+      x = torch::relu(conv3_3->forward(x));
+      x = torch::max_pool2d(x, 2);
+      
+      x = torch::relu(conv4_1->forward(x));
+      x = torch::relu(conv4_2->forward(x));
+      x = torch::relu(conv4_3->forward(x));
+      x = torch::max_pool2d(x, 2);
+      
+      x = torch::relu(conv5_1->forward(x));
+      x = torch::relu(conv5_2->forward(x));
+      x = torch::relu(conv5_3->forward(x));
+      
+      x = x.view({-1, 130});
+      
+      x = torch::relu(fc1->forward(x));
+      x = torch::relu(fc2->forward(x));
+      x = fc3->forward(x);
+      
+      return torch::log_softmax(x, 1);
+    }
+
+    torch::nn::Conv2d conv1_1{nullptr};
+    torch::nn::Conv2d conv1_2{nullptr};
+    torch::nn::Conv2d conv2_1{nullptr};
+    torch::nn::Conv2d conv2_2{nullptr};
+    torch::nn::Conv2d conv3_1{nullptr};
+    torch::nn::Conv2d conv3_2{nullptr};
+    torch::nn::Conv2d conv3_3{nullptr};
+    torch::nn::Conv2d conv4_1{nullptr};
+    torch::nn::Conv2d conv4_2{nullptr};
+    torch::nn::Conv2d conv4_3{nullptr};
+    torch::nn::Conv2d conv5_1{nullptr};
+    torch::nn::Conv2d conv5_2{nullptr};
+    torch::nn::Conv2d conv5_3{nullptr};
+
+    torch::nn::Linear fc1{nullptr}, fc2{nullptr}, fc3{nullptr};
   };
-  TORCH_MODULE(LeNet5);
-  
-  
+
   torch::Tensor CvImageToTensor(const cv::Mat& image, torch::DeviceType device) {
     assert(image.channels() == 1);
     std::vector<int64_t> dims{static_cast<int64_t>(1), static_cast<int64_t>(image.rows), static_cast<int64_t>(image.cols)};
@@ -167,7 +194,7 @@ namespace ml {
 	  image_file.read(reinterpret_cast<char*>(img.data), static_cast<std::streamsize>(img.size().area()));
 	  img.convertTo(images[i], CV_32F);
 	  images[i] /= 255;  // normalize
-	  cv::resize(images[i], images[i], cv::Size(32, 32));  // Resize to 32x32 size
+	  cv::resize(images[i], images[i], cv::Size(16, 16));  // Resize to 32x32 size
 	}
       }
     }
@@ -195,9 +222,9 @@ namespace ml {
     auto train_loader = torch::data::make_data_loader(train_data_set.map(torch::data::transforms::Stack<>()), torch::data::DataLoaderOptions().batch_size(256).workers(8));
 
     // Show example image
-    cv::imshow(std::to_string(labels[300]), images[300]);
-    cv::waitKey(0);
-    cv::destroyAllWindows();
+    //cv::imshow(std::to_string(labels[300]), images[300]);
+    //cv::waitKey(0);
+    //cv::destroyAllWindows();
     
     // Load test images
     std::vector<unsigned char> tlabels;
@@ -208,58 +235,28 @@ namespace ml {
     auto test_loader = torch::data::make_data_loader(test_data_set.map(torch::data::transforms::Stack<>()), torch::data::DataLoaderOptions().batch_size(1024).workers(8));
 
     // Show example image
-    cv::imshow(std::to_string(tlabels[300]), timages[300]);
-    cv::waitKey(0);
-    cv::destroyAllWindows();
+    //cv::imshow(std::to_string(tlabels[300]), timages[300]);
+    //cv::waitKey(0);
+    //cv::destroyAllWindows();
 
-    // model
-    LeNet5Impl model;
-    model.to(device);
+    auto net = std::make_shared<Net>();
+    torch::optim::SGD optimizer(net->parameters(), 0.01); // Learning Rate 0.01
 
-    // optimizer
-    double learning_rate = 0.01;
-    double weight_decay = 0.0001;
-    torch::optim::SGD optimizer(model.parameters(), torch::optim::SGDOptions(learning_rate).weight_decay(weight_decay).momentum(0.5));
-
-    // Training
-    int epochs = 100;
-    for (int epoch = 0; epoch < epochs; ++epoch) {
-      model.train();
-
-      // Batches
-      int idx = 0;
-      for (auto& batch : (*train_loader)) {
+    for(size_t epoch=1; epoch<=10; ++epoch) {
+      size_t batch_index = 0;
+      for (auto& batch: *train_loader) {
 	optimizer.zero_grad();
-	torch::Tensor prediction = model.forward(batch.data);
-
-	// test data
-	// std::cout << prediction << std::endl;
-	// std::cout << batch.target << std::endl;
-
-	torch::Tensor loss = torch::nll_loss(prediction, batch.target.squeeze(1));
+	torch::Tensor prediction = net->forward(batch.data);
+	torch::Tensor loss = torch::nll_loss(prediction, batch.target);
 	loss.backward();
 	optimizer.step();
 
-	if (idx % 10 == 0) {
-	  std::cout << "Epoch: " << epoch << ", Batch: " << idx << ", Loss: " << loss.item<float>() << std::endl;
+	// Output the loss and checkpoint every 100 batches
+	if (++batch_index % 100 == 0) {
+	  std::cout << "Epoch: " << epoch << " | Batch: " << batch_index 
+		    << " | Loss: " << loss.item<float>() << std::endl;
 	}
-	++idx;
       }
-
-      // Test data set for evaluation
-      model.eval();
-      unsigned long total_correct = 0;
-      float avg_loss = 0.0;
-      for (auto& batch : (*test_loader)) {
-	torch::Tensor prediction = model.forward(batch.data);
-	torch::Tensor loss = torch::nll_loss(prediction, batch.target.squeeze(1));
-	avg_loss += loss.sum().item<float>();
-	auto pred = std::get<1>(prediction.detach_().max(1));
-	total_correct += static_cast<unsigned long>(pred.eq(batch.target.view_as(pred)).sum().item<long>());
-      }
-      avg_loss /= test_data_set.size().value();
-      double accuracy = (static_cast<double>(total_correct) / test_data_set.size().value());
-      std::cout << "Test Avg. Loss: " << avg_loss << ", Accuracy: " << accuracy << std::endl;
     }
     
 
