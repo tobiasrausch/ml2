@@ -5,7 +5,7 @@ TARGETS = .libtorch .opencv .mnist ml
 PBASE=$(shell pwd)
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Darwin)
-	PYTORCHLIB="https://download.pytorch.org/libtorch/cpu/libtorch-macos-1.11.0.zip"
+	PYTORCHLIB="https://download.pytorch.org/libtorch/nightly/cpu/libtorch-macos-latest.zip"
 else
 	PYTORCHLIB="https://download.pytorch.org/libtorch/nightly/cpu/libtorch-cxx11-abi-shared-with-deps-latest.zip"
 endif
