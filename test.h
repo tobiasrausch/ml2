@@ -37,75 +37,24 @@ namespace ml {
     boost::filesystem::path path;
   };
 
-  struct Net: torch::nn::Module {
+  struct Net : torch::nn::Module {
     Net() {
-      conv1_1 = register_module("conv1_1", torch::nn::Conv2d(torch::nn::Conv2dOptions(1, 10, 3).padding(1)));
-      conv1_2 = register_module("conv1_2", torch::nn::Conv2d(torch::nn::Conv2dOptions(10, 20, 3).padding(1)));
-      conv2_1 = register_module("conv2_1", torch::nn::Conv2d(torch::nn::Conv2dOptions(20, 30, 3).padding(1)));
-      conv2_2 = register_module("conv2_2", torch::nn::Conv2d(torch::nn::Conv2dOptions(30, 40, 3).padding(1)));
-      conv3_1 = register_module("conv3_1", torch::nn::Conv2d(torch::nn::Conv2dOptions(40, 50, 3).padding(1)));
-      conv3_2 = register_module("conv3_2", torch::nn::Conv2d(torch::nn::Conv2dOptions(50, 60, 3).padding(1)));
-      conv3_3 = register_module("conv3_3", torch::nn::Conv2d(torch::nn::Conv2dOptions(60, 70, 3).padding(1)));
-      conv4_1 = register_module("conv4_1", torch::nn::Conv2d(torch::nn::Conv2dOptions(70, 80, 3).padding(1)));
-      conv4_2 = register_module("conv4_2", torch::nn::Conv2d(torch::nn::Conv2dOptions(80, 90, 3).padding(1)));
-      conv4_3 = register_module("conv4_3", torch::nn::Conv2d(torch::nn::Conv2dOptions(90, 100, 3).padding(1)));
-      conv5_1 = register_module("conv5_1", torch::nn::Conv2d(torch::nn::Conv2dOptions(100, 110, 3).padding(1)));
-      conv5_2 = register_module("conv5_2", torch::nn::Conv2d(torch::nn::Conv2dOptions(110, 120, 3).padding(1)));
-      conv5_3 = register_module("conv5_3", torch::nn::Conv2d(torch::nn::Conv2dOptions(120, 130, 3).padding(1)));
-      fc1 = register_module("fc1", torch::nn::Linear(130, 50));
-      fc2 = register_module("fc2", torch::nn::Linear(50, 20));
-      fc3 = register_module("fc3", torch::nn::Linear(20, 10));
-    }
-    
-    torch::Tensor forward(torch::Tensor x) {
-      x = torch::relu(conv1_1->forward(x));
-      x = torch::relu(conv1_2->forward(x));
-      x = torch::max_pool2d(x, 2);
-      
-      x = torch::relu(conv2_1->forward(x));
-      x = torch::relu(conv2_2->forward(x));
-      x = torch::max_pool2d(x, 2);
-      
-      x = torch::relu(conv3_1->forward(x));
-      x = torch::relu(conv3_2->forward(x));
-      x = torch::relu(conv3_3->forward(x));
-      x = torch::max_pool2d(x, 2);
-      
-      x = torch::relu(conv4_1->forward(x));
-      x = torch::relu(conv4_2->forward(x));
-      x = torch::relu(conv4_3->forward(x));
-      x = torch::max_pool2d(x, 2);
-      
-      x = torch::relu(conv5_1->forward(x));
-      x = torch::relu(conv5_2->forward(x));
-      x = torch::relu(conv5_3->forward(x));
-      
-      x = x.view({-1, 130});
-      
-      x = torch::relu(fc1->forward(x));
-      x = torch::relu(fc2->forward(x));
-      x = fc3->forward(x);
-      
-      return torch::log_softmax(x, 1);
+      fc1 = register_module("fc1", torch::nn::Linear(784, 64));
+      fc2 = register_module("fc2", torch::nn::Linear(64, 32));
+      fc3 = register_module("fc3", torch::nn::Linear(32, 10));
     }
 
-    torch::nn::Conv2d conv1_1{nullptr};
-    torch::nn::Conv2d conv1_2{nullptr};
-    torch::nn::Conv2d conv2_1{nullptr};
-    torch::nn::Conv2d conv2_2{nullptr};
-    torch::nn::Conv2d conv3_1{nullptr};
-    torch::nn::Conv2d conv3_2{nullptr};
-    torch::nn::Conv2d conv3_3{nullptr};
-    torch::nn::Conv2d conv4_1{nullptr};
-    torch::nn::Conv2d conv4_2{nullptr};
-    torch::nn::Conv2d conv4_3{nullptr};
-    torch::nn::Conv2d conv5_1{nullptr};
-    torch::nn::Conv2d conv5_2{nullptr};
-    torch::nn::Conv2d conv5_3{nullptr};
+    torch::Tensor forward(torch::Tensor x) {
+      x = torch::relu(fc1->forward(x.reshape({x.size(0), 784})));
+      x = torch::dropout(x, /*p=*/0.5, /*train=*/is_training());
+      x = torch::relu(fc2->forward(x));
+      x = torch::log_softmax(fc3->forward(x), /*dim=*/1);
+      return x;
+    }
 
     torch::nn::Linear fc1{nullptr}, fc2{nullptr}, fc3{nullptr};
   };
-
+      
   torch::Tensor CvImageToTensor(const cv::Mat& image, torch::DeviceType device) {
     assert(image.channels() == 1);
     std::vector<int64_t> dims{static_cast<int64_t>(1), static_cast<int64_t>(image.rows), static_cast<int64_t>(image.cols)};
@@ -183,7 +132,7 @@ namespace ml {
 	  image_file.read(reinterpret_cast<char*>(img.data), static_cast<std::streamsize>(img.size().area()));
 	  img.convertTo(images[i], CV_32F);
 	  images[i] /= 255;  // normalize
-	  cv::resize(images[i], images[i], cv::Size(16, 16));  // Resize to 32x32 size
+	  cv::resize(images[i], images[i], cv::Size(28, 28));
 	}
       }
     }
@@ -208,12 +157,12 @@ namespace ml {
     _readLabels(train_labels.string(), labels);
     _readImages(train_images.string(), images);
     auto train_data_set = CustomDataset(images, labels, device);
-    auto train_loader = torch::data::make_data_loader(train_data_set.map(torch::data::transforms::Stack<>()), torch::data::DataLoaderOptions().batch_size(256).workers(8));
+    auto train_loader = torch::data::make_data_loader(train_data_set.map(torch::data::transforms::Stack<>()), torch::data::DataLoaderOptions().batch_size(64).workers(8));
 
     // Show example image
-    cv::imshow(std::to_string(labels[300]), images[300]);
-    cv::waitKey(0);
-    cv::destroyAllWindows();
+    //cv::imshow(std::to_string(labels[300]), images[300]);
+    //cv::waitKey(0);
+    //cv::destroyAllWindows();
     
     // Load test images
     std::vector<unsigned char> tlabels;
@@ -221,12 +170,12 @@ namespace ml {
     _readLabels(test_labels.string(), tlabels);
     _readImages(test_images.string(), timages);
     auto test_data_set = CustomDataset(timages, tlabels, device);
-    auto test_loader = torch::data::make_data_loader(test_data_set.map(torch::data::transforms::Stack<>()), torch::data::DataLoaderOptions().batch_size(1024).workers(8));
+    auto test_loader = torch::data::make_data_loader(test_data_set.map(torch::data::transforms::Stack<>()), torch::data::DataLoaderOptions().batch_size(128).workers(8));
 
     // Show example image
-    cv::imshow(std::to_string(tlabels[300]), timages[300]);
-    cv::waitKey(0);
-    cv::destroyAllWindows();
+    //cv::imshow(std::to_string(tlabels[300]), timages[300]);
+    //cv::waitKey(0);
+    //cv::destroyAllWindows();
 
     auto net = std::make_shared<Net>();
     torch::optim::SGD optimizer(net->parameters(), 0.01);
@@ -239,7 +188,7 @@ namespace ml {
 	torch::Tensor loss = torch::nll_loss(prediction, batch.target);
 	loss.backward();
 	optimizer.step();
-	if (bidx % 10 == 0) {
+	if (bidx % 100 == 0) {
 	  std::cout << "Epoch: " << epoch << ", Batch: " << bidx << ", Loss: " << loss.item<float>() << std::endl;
 	}
 	++bidx;
@@ -247,13 +196,17 @@ namespace ml {
 
       net->eval();  // switch to the training mode
       float avg_loss = 0.0;
+      int32_t correct = 0;
       for (auto& batch : *test_loader) {
 	torch::Tensor prediction = net->forward(batch.data);
 	torch::Tensor loss = torch::nll_loss(prediction, batch.target);
 	avg_loss += loss.sum().item<float>();
+	auto targets = batch.target.to(device);
+	correct += prediction.argmax(1).eq(targets).sum().template item<int64_t>();
       }
       avg_loss /= test_data_set.size().value();
-      std::cout << "Test Avg. Loss: " << avg_loss << std::endl;
+      double acc = (double) correct / (double) test_data_set.size().value();
+      std::cout << "Test Avg. Loss: " << avg_loss << ", Accuracy: " << acc << std::endl;
     }
     
 
