@@ -33,7 +33,6 @@ namespace ml {
 
   // Config arguments
   struct TestConfig {
-    boost::filesystem::path outfile;
     boost::filesystem::path path;
   };
 
@@ -54,7 +53,39 @@ namespace ml {
 
     torch::nn::Linear fc1{nullptr}, fc2{nullptr}, fc3{nullptr};
   };
-      
+
+  struct Net2 : torch::nn::Module {
+    Net2()
+      : conv1(torch::nn::Conv2dOptions(1, 10, /*kernel_size=*/5)),
+        conv2(torch::nn::Conv2dOptions(10, 20, /*kernel_size=*/5)),
+        fc1(320, 50),
+        fc2(50, 10) {
+      register_module("conv1", conv1);
+      register_module("conv2", conv2);
+      register_module("conv2_drop", conv2_drop);
+      register_module("fc1", fc1);
+      register_module("fc2", fc2);
+    }
+    
+    torch::Tensor forward(torch::Tensor x) {
+      x = torch::relu(torch::max_pool2d(conv1->forward(x), 2));
+      x = torch::relu(
+		      torch::max_pool2d(conv2_drop->forward(conv2->forward(x)), 2));
+      x = x.view({-1, 320});
+      x = torch::relu(fc1->forward(x));
+      x = torch::dropout(x, /*p=*/0.5, /*training=*/is_training());
+      x = fc2->forward(x);
+      return torch::log_softmax(x, /*dim=*/1);
+    }
+    
+    torch::nn::Conv2d conv1;
+    torch::nn::Conv2d conv2;
+    torch::nn::Dropout2d conv2_drop;
+    torch::nn::Linear fc1;
+    torch::nn::Linear fc2;
+  };
+
+  
   torch::Tensor CvImageToTensor(const cv::Mat& image, torch::DeviceType device) {
     assert(image.channels() == 1);
     std::vector<int64_t> dims{static_cast<int64_t>(1), static_cast<int64_t>(image.rows), static_cast<int64_t>(image.cols)};
@@ -170,14 +201,15 @@ namespace ml {
     _readLabels(test_labels.string(), tlabels);
     _readImages(test_images.string(), timages);
     auto test_data_set = CustomDataset(timages, tlabels, device);
-    auto test_loader = torch::data::make_data_loader(test_data_set.map(torch::data::transforms::Stack<>()), torch::data::DataLoaderOptions().batch_size(128).workers(8));
+    auto test_loader = torch::data::make_data_loader(test_data_set.map(torch::data::transforms::Stack<>()), torch::data::DataLoaderOptions().batch_size(1024).workers(8));
 
     // Show example image
     //cv::imshow(std::to_string(tlabels[300]), timages[300]);
     //cv::waitKey(0);
     //cv::destroyAllWindows();
 
-    auto net = std::make_shared<Net>();
+    //auto net = std::make_shared<Net>();
+    auto net = std::make_shared<Net2>();
     torch::optim::SGD optimizer(net->parameters(), 0.01);
     for(uint32_t epoch=0; epoch<10; ++epoch) {
       net->train(); // Training mode
@@ -228,7 +260,6 @@ namespace ml {
     boost::program_options::options_description generic("Generic options");
     generic.add_options()
       ("help,?", "show help message")
-      ("outfile", boost::program_options::value<boost::filesystem::path>(&c.outfile)->default_value("out.png"), "outfile")
       ;
     
     // Define hidden options
@@ -253,7 +284,7 @@ namespace ml {
     // Check command line arguments
     if ((vm.count("help")) || (!vm.count("input-file"))) { 
       std::cout << std::endl;
-      std::cout << "Usage: ml " << argv[0] << " [OPTIONS] <test>" << std::endl;
+      std::cout << "Usage: ml " << argv[0] << " [OPTIONS] ./mnist/" << std::endl;
       std::cout << visible_options << "\n";
       return 0;
     }
