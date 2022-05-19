@@ -1,5 +1,5 @@
-#ifndef MATCHES_H
-#define MATCHES_H
+#ifndef MNIST_H
+#define MNIST_H
 
 
 #include <iostream>
@@ -32,7 +32,7 @@
 namespace ml {
 
   // Config arguments
-  struct TestConfig {
+  struct MnistConfig {
     boost::filesystem::path path;
   };
 
@@ -171,7 +171,7 @@ namespace ml {
 
   
   template<typename TConfigStruct>
-  inline int testRun(TConfigStruct& c) {
+  inline int mnistRun(TConfigStruct& c) {
 #ifdef PROFILE
     ProfilerStart("test.prof");
 #endif
@@ -253,8 +253,8 @@ namespace ml {
   }
 
 
-  int test(int argc, char **argv) {
-    TestConfig c;
+  int mnist(int argc, char **argv) {
+    MnistConfig c;
     
     // Define generic options
     boost::program_options::options_description generic("Generic options");
@@ -296,7 +296,7 @@ namespace ml {
     for(int i=0; i<argc; ++i) { std::cout << argv[i] << ' '; }
     std::cout << std::endl;
     
-    return testRun(c);
+    return mnistRun(c);
   }
 
 }
