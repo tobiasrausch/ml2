@@ -13,6 +13,7 @@
 
 #include "version.h"
 #include "mnist.h"
+#include "classify.h"
 
 using namespace ml;
 
@@ -21,6 +22,7 @@ displayUsage() {
   std::cout << "Usage: ml <command> <arguments>" << std::endl;
   std::cout << std::endl;
   std::cout << "    mnist          MNIST example" << std::endl;
+  std::cout << "    classify       image classifier example" << std::endl;
   std::cout << std::endl;
   std::cout << std::endl;
 }
@@ -56,6 +58,9 @@ int main(int argc, char **argv) {
     }
     else if ((std::string(argv[1]) == "mnist")) {
       return mnist(argc-1,argv+1);
+    }
+    else if ((std::string(argv[1]) == "classify")) {
+      return classify(argc-1,argv+1);
     }
     std::cerr << "Unrecognized command " << std::string(argv[1]) << std::endl;
     return 1;
