@@ -190,7 +190,7 @@ namespace ml {
 
     auto net = std::make_shared<Net23>();
     torch::optim::SGD optimizer(net->parameters(), 0.01);
-    for(uint32_t epoch=0; epoch<100; ++epoch) {
+    for(uint32_t epoch=0; epoch<1000; ++epoch) {
       net->train(); // Training mode
       uint32_t bidx = 0;
       for (auto& batch: *train_loader) {
